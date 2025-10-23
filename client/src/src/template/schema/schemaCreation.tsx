@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
+import { createSchema } from './schemaAPI'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -162,28 +163,24 @@ const validateSchemaForm = (
     }
     let generalError: string | null = null
 
-    // Validate name
     if (!data.name.trim()) {
         errors.name = true
         generalError = 'Please enter schema name'
         return { isValid: false, errors, generalError }
     }
 
-    // Validate EPSG code
     if (!data.epsg || isNaN(Number(data.epsg))) {
         errors.epsg = true
         generalError = 'Please enter a valid EPSG code'
         return { isValid: false, errors, generalError }
     }
 
-    // Validate coordinates
     if (!data.lon.trim() || !data.lat.trim() || isNaN(Number(data.lon)) || isNaN(Number(data.lat))) {
         errors.coordinates = true
         generalError = 'Please enter valid coordinates'
         return { isValid: false, errors, generalError }
     }
 
-    // Validate grid levels
     if (data.gridLayerInfos.length === 0) {
         generalError = 'Please add at least one grid level'
         return { isValid: false, errors, generalError }
@@ -206,7 +203,6 @@ const validateSchemaForm = (
         return { isValid: false, errors, generalError }
     }
 
-    // Validate converted coordinates
     if (!data.convertedCoord) {
         generalError = 'Unable to get converted coordinates'
         return { isValid: false, errors, generalError }
@@ -281,7 +277,7 @@ export default function SchemaCreation({ context }: SchemaCreationProps) {
         triggerRepaint()
     }
 
-    const updateCoords = () => {
+    const updateCoords = async () => {
         const pc = pageContext.current
         const epsg = pc.epsg
         const alignmentOrigin = pc.alignmentOrigin
@@ -291,7 +287,7 @@ export default function SchemaCreation({ context }: SchemaCreationProps) {
 
             else if (epsg.toString().length < 4) converted = null
 
-            else converted = convertCoordinate(alignmentOrigin, epsg, 4326)
+            else converted = await convertCoordinate(alignmentOrigin, 4326, epsg)
         }
         setConvertedCoord(converted)
     }
@@ -388,6 +384,8 @@ export default function SchemaCreation({ context }: SchemaCreationProps) {
         setGeneralMessage(null)
         setConvertedCoord(null)
         setIsSelectingPoint(false)
+
+        triggerRepaint()
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -417,7 +415,14 @@ export default function SchemaCreation({ context }: SchemaCreationProps) {
 
         setGeneralMessage('Submitting data...')
 
-        // const res = await createSchema.fetch(schemaData,)
+        const res = await createSchema(schemaData)
+        if (res.success) {
+            setGeneralMessage('Created successfully')
+        } else {
+            setGeneralMessage(res.message)
+        }
+
+        resetForm()
     }
 
     return (
