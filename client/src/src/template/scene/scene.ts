@@ -1,6 +1,4 @@
 import * as api from '../noodle/apis'
-import DefaultPageContext from "../context/default"
-import ContextStorage from "../context/contextStorage"
 import { IResourceNode, IResourceTree } from "./iscene"
 import { TEMPLATE_REGISTRY } from '@/registry/templateRegistry'
 import { ITemplate } from '../iTemplate'
@@ -9,12 +7,14 @@ export class ResourceNode implements IResourceNode {
     key: string
     lockId: string = ''
     aligned: boolean = false
+    isTemp: boolean = false
     tree: ResourceTree
     template: ITemplate | null
     parent: IResourceNode | null
     children: Map<string, IResourceNode> = new Map()
 
-    private _context: any
+    context: any
+    mountParams: any
 
     get id(): string { return this.key }
     get name(): string { return this.key.split('.').pop() || '' }
@@ -28,10 +28,9 @@ export class ResourceNode implements IResourceNode {
         this.tree = tree
         this.parent = parent
         this.template = template
-        this._context = undefined
+        this.context = undefined
+        this.mountParams = undefined
     }
-
-
 }
 
 interface TreeUpdateCallback {
@@ -50,8 +49,6 @@ export class ResourceTree implements IResourceTree {
     scene: Map<string, IResourceNode> = new Map()
 
     leadIP?: string
-
-    cs: ContextStorage = ContextStorage.getInstance()
 
     private handleNodeClick: (node: IResourceNode) => void = () => { }
     private handleNodeDoubleClick: (node: IResourceNode) => void = () => { }
@@ -200,6 +197,7 @@ export class ResourceTree implements IResourceTree {
         const template = TEMPLATE_REGISTRY[params.template_name]
         const newNode = new ResourceNode(this, params.node_key, parentNode, template ?? null)
         newNode.aligned = true
+        newNode.isTemp = true
 
         parentNode.children.set(newNode.id, newNode)
         this.scene.set(newNode.id, newNode)

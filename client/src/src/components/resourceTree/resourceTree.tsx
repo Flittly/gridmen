@@ -6,7 +6,7 @@ import {
     Folder,
     MapPin,
     Square,
-    FilePlus,
+    FilePlusCorner,
     FolderOpen,
     FolderPlus,
     RefreshCcw,
@@ -91,6 +91,12 @@ function CreationBar({ resourceTree, onCreated, onCancel }: { resourceTree: Reso
             }
 
             const createdNode = resourceTree.addLocalNode({
+                node_key: newNodeKey,
+                template_name: localValue,
+                parent_key: parentKey,
+            })
+
+            console.log({
                 node_key: newNodeKey,
                 template_name: localValue,
                 parent_key: parentKey,
@@ -196,7 +202,6 @@ const NodeRenderer = ({
     const tree = node.tree as ResourceTree
 
     const isFolder = node.template_name === 'default'
-    const isExpanded = tree.isNodeExpanded(node.id)
     const isSelected = tree.selectedNode?.id === node.id
 
     const { setSelectedNodeKey } = useSelectedNodeStore()
@@ -322,10 +327,8 @@ const NodeRenderer = ({
             // 同一棵树内部
             if (sourceTitle === targetTitle) {
                 if (targetTitle === 'Public') {
-                    // Public 内部禁止
                     return
                 } else if (targetTitle === 'WorkSpace') {
-                    // Private 内部：预留逻辑占位
                     console.debug('TODO: handle private-to-private move', sourceNodeKey, targetNodeKey)
                     return
                 }
@@ -422,7 +425,7 @@ const NodeRenderer = ({
                         <div className='ml-1.5 flex'>
                             {isFolder ? (
                                 <>
-                                    {isExpanded ? (
+                                    {tree.isNodeExpanded(node.id) ? (
                                         <>
                                             <ChevronDown className='w-4 h-4 mr-0.5' />
                                             <FolderOpen className='w-4 h-4 mr-2 text-gray-400' />
@@ -438,16 +441,17 @@ const NodeRenderer = ({
                                 (() => {
                                     switch (node.template_name) {
                                         case 'schema':
-                                            return <MapPin className='w-4 h-4 mr-2 ml-4.5 text-red-500' />
+                                            return <MapPin className={cn(node.isTemp ? 'text-white' : 'text-red-500', 'w-4 h-4 mr-2 ml-4.5 ')} />
                                         case 'patch':
-                                            return <Square className='w-4 h-4 mr-2 ml-4.5 text-sky-500' />
+                                            return <Square className={cn(node.isTemp ? 'text-white' : 'text-sky-500', 'w-4 h-4 mr-2 ml-4.5 ')} />
                                         default:
                                             return <File className='w-4 h-4 mr-2 ml-4.5 text-blue-500' />
                                     }
                                 })()
                             )}
                         </div>
-                        <span>{node.name}</span>
+                        <span className={cn(node.isTemp && 'italic')}>{node.name}</span>
+                        {node.isTemp && <span className='ml-2 text-xs font-semibold text-yellow-500'>[temp]</span>}
                     </div>
                 </ContextMenuTrigger>
                 {renderNodeMenu()}
@@ -461,7 +465,7 @@ const NodeRenderer = ({
             )}
 
             {/* Render child nodes */}
-            {isFolder && isExpanded && node.children && (
+            {isFolder && tree.isNodeExpanded(node.id) && node.children && (
                 <div>
                     {Array.from(node.children.values()).map(childNode => (
                         <NodeRenderer
@@ -542,6 +546,12 @@ const TreeRenderer = ({ title, resourceTree, triggerFocus, focusNode }: TreeRend
                     mount_params_string: JSON.stringify({})
                 })
 
+                console.log({
+                    node_key: newNodeKey,
+                    template_name: value,
+                    mount_params_string: JSON.stringify({})
+                })
+
                 // 标记新建的临时节点，便于后续 creation 激活
                 setSelectedNodeKey(newNodeKey)
 
@@ -576,6 +586,12 @@ const TreeRenderer = ({ title, resourceTree, triggerFocus, focusNode }: TreeRend
                 }
 
                 await api.node.mountNode({
+                    node_key: newNodeKey,
+                    template_name: '',
+                    mount_params_string: ''
+                })
+
+                console.log({
                     node_key: newNodeKey,
                     template_name: '',
                     mount_params_string: ''
@@ -769,7 +785,7 @@ const TreeRenderer = ({ title, resourceTree, triggerFocus, focusNode }: TreeRend
             onDrop={handleRootDrop}
         >
             <div
-                className='z-10 bg-[#2A2C33] py-1 pl-1 text-sm font-semibold flex items-center text-gray-200 cursor-pointer'
+                className='z-10 h-8 bg-[#2A2C33] py-1 pl-1 text-sm font-semibold flex items-center text-gray-200 cursor-pointer'
                 onClick={handleClickTreeTitle}
             >
                 <span className='ml-2'>{title}</span>
@@ -780,7 +796,7 @@ const TreeRenderer = ({ title, resourceTree, triggerFocus, focusNode }: TreeRend
                                 className='w-6 h-6 rounded-sm bg-[#2A2C33] hover:bg-[#363737] text-[#B8B8B8] cursor-pointer'
                                 onClick={(e) => handleFilePlusClick(e)}
                             >
-                                <FilePlus className='w-4 h-4' />
+                                <FilePlusCorner className='w-4 h-4' />
                             </Button>
                             <Button
                                 className='w-6 h-6 rounded-sm bg-[#2A2C33] hover:bg-[#363737] text-[#B8B8B8] cursor-pointer'
