@@ -6,12 +6,14 @@ import { Input } from '@/components/ui/input'
 import { ResourceNode, ResourceTree } from '../scene/scene'
 import { Button } from '@/components/ui/button'
 import { IResourceNode } from '../scene/iscene'
+import { useLayerGroupStore } from '@/store/storeSet'
+import { useToolPanelStore } from '@/store/storeSet'
 import { IViewContext } from '@/views/IViewContext'
 import { Separator } from '@/components/ui/separator'
 import { ArrowRightLeft, MapPin, Save, SquaresIntersect, Upload, X } from 'lucide-react'
 import { MapViewContext } from '@/views/mapView/mapView'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { addMapMarker, addMapPatchBounds, clearMapAllMarkers, clearMarkerByNodeKey, convertPointCoordinate, startDrawRectangle, stopDrawRectangle } from '@/utils/utils'
+import { addMapMarker, addMapPatchBounds, adjustPatchBounds, clearMapAllMarkers, clearMarkerByNodeKey, convertPointCoordinate, startDrawRectangle, stopDrawRectangle } from '@/utils/utils'
 import { PatchData } from './types'
 
 interface PatchCreationProps {
@@ -104,6 +106,8 @@ export default function PatchCreation({
     const map = mapContext.map!
     const drawInstance = mapContext.drawInstance!
 
+
+
     const pageContext = useRef<PageContext>({
         name: '',
         schema: null,
@@ -154,6 +158,10 @@ export default function PatchCreation({
     }, [])
 
     const loadContext = async () => {
+        if (!drawInstance) {
+            console.log('map draw instance is null')
+        }
+
         if ((node as ResourceNode).context !== undefined) {
             pageContext.current = { ...(node as ResourceNode).context }
         } else {
@@ -171,12 +179,18 @@ export default function PatchCreation({
         return
     }
 
-    const adjustCoords = () => {
+    const adjustCoords = async () => {
         if (pageContext.current.originBounds && pageContext.current.originBounds.length === 4 && pageContext.current.schema) {
-            const fromEPSG = '4326'
+            const bounds = pageContext.current.originBounds
+            const gridLevel = pageContext.current.schema.grid_info[0]
+            const fromEPSG = 4326
             const toEPSG = pageContext.current.schema.epsg
+            const alignmentOrigin = pageContext.current.schema.alignment_origin
 
-            // const { convertedBounds, adjustedBounds, expandedBounds } = adjustPatchBounds(pageContext.current.originBounds, fromEPSG, toEPSG)
+            const { convertedBounds, alignedBounds, expandedBounds } = await adjustPatchBounds(bounds, gridLevel, fromEPSG, toEPSG, alignmentOrigin)
+            console.log('convertedBounds', convertedBounds)
+            console.log('alignedBounds', alignedBounds)
+            console.log('expandedBounds', expandedBounds)
         }
     }
     const formatSingleValue = (value: number): string => value.toFixed(6)
@@ -249,9 +263,6 @@ export default function PatchCreation({
     }
 
     /////////////////////////////////////////////////////
-
-
-
     const clearDrawPatchBounds = () => {
         console.log('clearDrawPatchBounds')
     }
@@ -259,7 +270,6 @@ export default function PatchCreation({
     const clearGridLines = () => {
         console.log('clearGridLines')
     }
-
     /////////////////////////////////////////////////////
 
     const covertBoundsTo4326 = async (bounds: [number, number, number, number], fromEPSG: number): Promise<[number, number, number, number] | null> => {
@@ -350,6 +360,10 @@ export default function PatchCreation({
             node.isTemp = false
                 ; (node as ResourceNode).tree.tempNodeExist = false
                 ; (node.tree as ResourceTree).selectedNode = null
+
+            // 根据 layerGroup 模式恢复 toolPanel 状态
+            const { isEditMode } = useLayerGroupStore.getState()
+            useToolPanelStore.getState().setActiveTab(isEditMode ? 'edit' : 'check')
 
             setGeneralMessage('Created successfully')
             await (node.tree as ResourceTree).refresh()
