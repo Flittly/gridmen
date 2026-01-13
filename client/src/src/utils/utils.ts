@@ -45,7 +45,7 @@ export const clearMapAllMarkers = () => {
 }
 
 export const clearMarkerByNodeKey = (nodeKey: string) => {
-    console.log('clearMarkerByNodeKey', nodeKey)
+    console.log('clearMarkerByNodeKey执行了')
     const marker = markerMap.get(nodeKey)
     if (marker) {
         marker.remove()
@@ -389,4 +389,15 @@ export const calculateGridCounts = (
     const heightCount = Math.abs((swY - baseY) / gridHeight)
 
     return { widthCount, heightCount }
+}
+
+export const convertBoundsCoordinates = async (
+    coordinates: [number, number, number, number],
+    fromEPSG: number,
+    toEPSG: number
+): Promise<[number, number, number, number]> => {
+    const sw = await convertPointCoordinate([coordinates[0], coordinates[1]], fromEPSG, toEPSG)
+    const ne = await convertPointCoordinate([coordinates[2], coordinates[3]], fromEPSG, toEPSG)
+
+    return [sw![0], sw![1], ne![0], ne![1]]
 }

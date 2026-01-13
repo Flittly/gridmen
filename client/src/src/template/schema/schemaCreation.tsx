@@ -262,7 +262,7 @@ export default function SchemaCreation({
         }
     }, [])
 
-    const loadContext = async () => {
+    const loadContext = () => {
         if ((node as ResourceNode).context !== undefined) {
             pageContext.current = { ...(node as ResourceNode).context }
         } else {
@@ -272,7 +272,7 @@ export default function SchemaCreation({
         triggerRepaint()
     }
 
-    const unloadContext = async () => {
+    const unloadContext = () => {
         (node as ResourceNode).context = {
             ...pageContext.current
         }
@@ -415,6 +415,7 @@ export default function SchemaCreation({
             node.isTemp = false
                 ; (node as ResourceNode).tree.tempNodeExist = false
                 ; (node.tree as ResourceTree).selectedNode = null
+                ; (node.tree as ResourceTree).notifyDomUpdate()
 
             const { isEditMode } = useLayerGroupStore.getState()
             useToolPanelStore.getState().setActiveTab(isEditMode ? 'edit' : 'check')
