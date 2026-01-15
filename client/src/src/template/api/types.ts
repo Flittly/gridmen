@@ -1,20 +1,13 @@
-import { Callback } from "@/core/types"
-
-export default interface IAPI<Q, R> {
-    fetch: (query: Q, node_key: string, lock_id: string) => Promise<R>
-    fetchWithCallback?: (query: Q, callback: Callback<R>) => void
-}
-
-export type MultiGridBaseInfo = {
+export type MultiCellBaseInfo = {
     levels: Uint8Array;
     globalIds: Uint32Array;
     deleted?: Uint8Array;
 }
 
-export interface GetNodeInfoParams {
-    node_key: string
-    child_start_index?: number
-    child_end_index?: number
+export interface GetNodeMetaInfoParams {
+    nodeInfo: string
+    childStartIndex?: number
+    childEndIndex?: number
 }
 
 export interface NodeMeta {
@@ -30,9 +23,9 @@ export interface BaseResponse {
 }
 
 export interface MountNodeParams {
-    node_key: string
-    template_name: string | null
-    mount_params_string: string | null
+    nodeInfo: string
+    templateName: string | null
+    mountParamsString: string | null
 }
 
 export interface PushPullNodeParams {

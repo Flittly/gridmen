@@ -1,10 +1,10 @@
 icrms:
-  - tag: cc/ISchema/0.1.0
+  - tag: gridmen/ISchema/1.0.0
     module_path: icrms.ischema
-  - tag: cc/IPatch/0.1.0
+  - tag: gridmen/IPatch/1.0.0
     module_path: icrms.ipatch
 node_templates:
   - name: schema
-    module_path: crms.schema
+    module_path: templates.schema
   - name: patch
-    module_path: crms.patch
+    module_path: templates.patch

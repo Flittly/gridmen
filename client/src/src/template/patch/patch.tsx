@@ -79,18 +79,18 @@ export default class PatchTemplate implements ITemplate {
                 useToolPanelStore.getState().setActiveTab('create')
                 break
             case PatchMenuItem.CHECK_PATCH: {
-                const patchInfo = await api.node.getNodeParams(node.key, (node as ResourceNode).tree.leadIP !== undefined ? true : false);
+                const patchInfo = await api.node.getNodeParams(node.nodeInfo);
                 (node as ResourceNode).mountParams = patchInfo
                 useLayerStore.getState().addNodeToLayerGroup(node as ResourceNode)
             }
                 break
             case PatchMenuItem.EDIT_PATCH: {
                 if (!(node as ResourceNode).lockId) {
-                    const linkResponse = await linkNode('cc/IPatch/0.1.0', node.key, 'w', (node as ResourceNode).tree.leadIP !== undefined ? true : false);
+                    const linkResponse = await linkNode('gridmen/IPatch/1.0.0', node.nodeInfo, 'w');
                     (node as ResourceNode).lockId = linkResponse.lock_id
                 }
                 // const patchInfo = await api.node.getNodeParams(node.key, (node as ResourceNode).tree.leadIP !== undefined ? true : false);
-                const patchInfo = await api.patch.getPatchMeta(node.key, (node as ResourceNode).lockId!, (node as ResourceNode).tree.leadIP !== undefined ? true : false);
+                const patchInfo = await api.patch.getPatchMeta(node.nodeInfo, (node as ResourceNode).lockId!);
                 (node as ResourceNode).mountParams = patchInfo
                 useLayerStore.getState().addNodeToLayerGroup(node as ResourceNode)
             }
@@ -104,7 +104,7 @@ export default class PatchTemplate implements ITemplate {
                         return
                     }
 
-                    await api.node.unmountNode(node.key)
+                    await api.node.unmountNode(node.nodeInfo)
                     toast.success(`Patch ${node.name} deleted successfully`)
                     await (node.tree as ResourceTree).refresh()
                 }

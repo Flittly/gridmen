@@ -8,7 +8,7 @@ import pyarrow as pa
 from pathlib import Path
 import pyarrow.parquet as pq
 from collections import Counter
-from icrms.ipatch import IPatch, PatchSchema, PatchSaveInfo
+from icrms.ipatch import PatchSchema, PatchSaveInfo
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ PATCH_SCHEMA: pa.Schema = pa.schema([
     (ATTR_INDEX_KEY, pa.uint64())
 ])
 
-class Patch(IPatch):
+class Patch:
     def __init__(self, resource_space: str):
         # Check resource space validity
         self.resource_space = Path(resource_space)
@@ -310,7 +310,7 @@ class Patch(IPatch):
         children = pd.DataFrame(
             {
                 ATTR_DELETED: np.full(child_index, False, dtype=np.bool_),
-                ATTR_ACTIVATE: np.full(child_index, False, dtype=np.bool_),
+                ATTR_ACTIVATE: np.full(child_index, True, dtype=np.bool_),
                 ATTR_INDEX_KEY: _encode_index_batch(all_child_levels, all_child_global_ids)
             },
             columns=[ATTR_DELETED, ATTR_ACTIVATE, ATTR_INDEX_KEY]
