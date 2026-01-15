@@ -740,7 +740,8 @@ export default class TopologyLayer implements NHCustomLayerInterface {
         // Tick render
         if (!this.isTransparent) {
             // Mesh Pass
-            this.drawCellMeshes()
+            if (this.hitBuffer.isHitting)
+                this.drawCellMeshes()
             // Line Pass
             this.drawCellLines()
         }
