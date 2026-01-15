@@ -1,10 +1,7 @@
 import {
-    LucidePointer as SplinePointer,
+    SplinePointer,
     Pencil,
-    Save,
-    Move,
     Trash2,
-    Hand,
     Undo2,
     Redo2,
     MousePointer,
@@ -36,10 +33,13 @@ import type { IViewContext } from "@/views/IViewContext"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Button } from "@/components/ui/button"
-import { useEffect, useReducer, useRef, useState } from "react"
-import { ResourceNode } from "../scene/scene"
-import { Card, CardContent } from "@/components/ui/card"
+import { useCallback, useEffect, useReducer, useRef, useState } from "react"
+import { ResourceNode, ResourceTree } from "../scene/scene"
+import * as api from '../api/apis'
 import { Badge } from "@/components/ui/badge"
+import { MapViewContext } from "@/views/mapView/mapView"
+import { useLayerGroupStore, useToolPanelStore } from "@/store/storeSet"
+import { toast } from "sonner"
 
 interface VectorCreationProps {
     node: IResourceNode
@@ -86,6 +86,10 @@ const vectorColorMap = [
 
 export default function VectorCreation({ node, context }: VectorCreationProps) {
 
+    const mapContext = context as MapViewContext
+    const map = mapContext.map!
+    const drawInstance = mapContext.drawInstance!
+
     const pageContext = useRef<PageContext>({
         hasVector: false,
         drawVector: null,
@@ -93,25 +97,139 @@ export default function VectorCreation({ node, context }: VectorCreationProps) {
             type: "point",
             name: "",
             epsg: "",
-            color: "red",
+            color: "sky-500",
         }
     })
-
-    const [createDialogOpen, setCreateDialogOpen] = useState(false)
-    const [resetDialogOpen, setResetDialogOpen] = useState(false)
-    const [selectedTool, setSelectedTool] = useState<ToolType>("select");
 
     const [typeSelectDialogOpen, setTypeSelectDialogOpen] = useState(true)
     const [pendingType, setPendingType] = useState<VectorData["type"]>("point")
 
+    const [selectedTool, setSelectedTool] = useState<ToolType>("draw")
+    const selectedToolRef = useRef<ToolType>("draw")
+
     const [, triggerRepaint] = useReducer(x => x + 1, 0)
 
-    const vectorData = useRef<VectorData>({
-        type: "point",
-        name: "",
-        epsg: "",
-        color: "sky-500",
-    })
+    useEffect(() => {
+        loadContext()
+        return () => {
+            unloadContext()
+        }
+    }, [])
+
+    const loadContext = async () => {
+        setPendingType(pageContext.current.vectorData.type)
+        setTypeSelectDialogOpen(true)
+
+        if ((node as ResourceNode).context !== undefined) {
+            pageContext.current = { ...(node as ResourceNode).context }
+        } else {
+            pageContext.current.vectorData.name = node.name.split('.')[0]
+        }
+
+        if (pageContext.current.hasVector) {
+            setTimeout(() => {
+                if (pageContext.current.drawVector && pageContext.current.drawVector.features && pageContext.current.drawVector.features.length > 0) {
+                    if (drawInstance) {
+                        // ensure loaded features have color
+                        const loadColor = vectorColorMap.find((item) => item.value === pageContext.current.vectorData.color)?.color ?? "#0ea5e9"
+                        for (const feature of pageContext.current.drawVector.features as any[]) {
+                            feature.properties = feature.properties || {}
+                            feature.properties.user_color = feature.properties.user_color ?? loadColor
+                        }
+                        const validVectors: GeoJSON.FeatureCollection = {
+                            type: "FeatureCollection",
+                            features: pageContext.current.drawVector.features.filter((vector) => {
+                                if (vector.geometry.type === "Polygon") {
+                                    return vector.geometry.coordinates[0].length >= 4;
+                                }
+                                return true;
+                            })
+                        }
+
+                        try {
+                            drawInstance.add(validVectors)
+                            // apply color to draw features (by id) after add
+                            const all = drawInstance.getAll()
+                            for (const feature of all.features as any[]) {
+                                if (!feature?.id) continue
+                                try {
+                                    drawInstance.setFeatureProperty(feature.id, "user_color", loadColor)
+                                } catch {
+                                    // ignore
+                                }
+                            }
+                        } catch (error) {
+                            console.error("Failed to add vector:", error);
+                        }
+                    }
+                }
+            }, 500)
+        }
+
+        triggerRepaint()
+    }
+
+    const unloadContext = () => {
+        // const drawInstance = store.get<MapboxDraw>("mapDraw")
+
+        // if (pageContext.current!.hasVector) {
+        //     if (drawInstance) {
+        //         handleSaveVector()
+        //     }
+        // }
+    }
+
+    const setSelectedToolSafe = useCallback((tool: ToolType) => {
+        selectedToolRef.current = tool
+        setSelectedTool(tool)
+    }, [])
+
+    const safeChangeMode = useCallback((mode: string, modeOptions?: any) => {
+        try {
+            ; (drawInstance as any)?.changeMode?.(mode, modeOptions)
+        } catch (e) {
+            console.warn("Failed to change draw mode:", e)
+        }
+    }, [drawInstance])
+
+    const getHexColorByValue = useCallback((value: string) => {
+        return vectorColorMap.find((item) => item.value === value)?.color ?? "#0ea5e9"
+    }, [])
+
+    const getDrawModeByType = useCallback((type: VectorData["type"]) => {
+        switch (type) {
+            case "point":
+                return "draw_point"
+            case "line":
+                return "draw_line_string"
+            case "polygon":
+                return "draw_polygon"
+            default:
+                return "simple_select"
+        }
+    }, [])
+
+    const applyVectorColorToDraw = useCallback((hexColor: string) => {
+        if (!drawInstance) return
+        const all = drawInstance.getAll()
+        for (const feature of all.features) {
+            const featureId = (feature as any).id
+            if (!featureId) continue
+            try {
+                drawInstance.setFeatureProperty(featureId, "user_color", hexColor)
+            } catch {
+                // ignore
+            }
+        }
+    }, [drawInstance])
+
+    const syncDrawVectorFromDraw = useCallback(() => {
+        if (!drawInstance) return
+        const all = drawInstance.getAll()
+        pageContext.current.drawVector = all
+        pageContext.current.hasVector = all.features.length > 0
+        triggerRepaint()
+    }, [drawInstance])
 
     const getVectorTypeIcon = (type: string) => {
         switch (type) {
@@ -126,64 +244,61 @@ export default function VectorCreation({ node, context }: VectorCreationProps) {
         }
     }
 
+
     useEffect(() => {
-        loadContext()
-        return () => {
-            unloadContext()
+        if (!map || !drawInstance) return
+
+        const onCreate = (e: any) => {
+            const hex = getHexColorByValue(pageContext.current.vectorData.color)
+            if (e?.features && Array.isArray(e.features)) {
+                for (const f of e.features) {
+                    if (!f?.id) continue
+                    try {
+                        drawInstance.setFeatureProperty(f.id, "user_color", hex)
+                    } catch {
+                        // ignore
+                    }
+                }
+            }
+            syncDrawVectorFromDraw()
+
+            // MapboxDraw will switch to simple_select after finishing (e.g. double click).
+            // If we are in Draw tool, re-enter draw mode so user can keep drawing continuously.
+            if (selectedToolRef.current === "draw") {
+                const mode = getDrawModeByType(pageContext.current.vectorData.type)
+                setTimeout(() => safeChangeMode(mode), 0)
+            }
         }
-    }, [])
 
-    const loadContext = async () => {
-        setPendingType(vectorData.current.type)
-        setTypeSelectDialogOpen(true)
-        // pageContext.current = await node.getPageContext() as VectorsPageContext
-        // const pc = pageContext.current
-        // if (pc.hasVector) {
-        //     setVectorData(pc.vectorData)
+        const onUpdate = (e: any) => {
+            const hex = getHexColorByValue(pageContext.current.vectorData.color)
+            if (e?.features && Array.isArray(e.features)) {
+                for (const f of e.features) {
+                    if (!f?.id) continue
+                    try {
+                        drawInstance.setFeatureProperty(f.id, "user_color", hex)
+                    } catch {
+                        // ignore
+                    }
+                }
+            }
+            syncDrawVectorFromDraw()
+        }
 
-        //     const vectorColor = vectorColorMap.find(item => item.value === pc.vectorData.color)?.color
-        //     setVectorColor(vectorColor!)
+        const onDelete = () => {
+            syncDrawVectorFromDraw()
+        }
 
-        //     setTimeout(() => {
-        //         if (pc.drawVector && pc.drawVector.vectors && pc.drawVector.vectors.length > 0) {
-        //             const drawInstance = store.get<MapboxDraw>("mapDraw")
-        //             if (drawInstance) {
-        //                 const validVectors = {
-        //                     type: "FeatureCollection" as const,
-        //                     vectors: pc.drawVector.vectors.filter(vector => {
-        //                         if (vector.geometry.type === "Polygon") {
-        //                             return vector.geometry.coordinates[0].length >= 4;
-        //                         }
-        //                         return true;
-        //                     })
-        //                 };
+        map.on("draw.create", onCreate)
+        map.on("draw.update", onUpdate)
+        map.on("draw.delete", onDelete)
 
-        //                 try {
-        //                     drawInstance.add(validVectors)
-        //                 } catch (error) {
-        //                     console.error("Failed to add vector:", error);
-        //                 }
-        //             }
-        //         }
-        //     }, 500);
-
-        //     setSelectedTool("select")
-        // } else {
-        //     setCreateDialogOpen(true)
-        //     setSelectedTool("select")
-        // }
-        triggerRepaint()
-    }
-
-    const unloadContext = () => {
-        // const drawInstance = store.get<MapboxDraw>("mapDraw")
-
-        // if (pageContext.current!.hasVector) {
-        //     if (drawInstance) {
-        //         handleSaveVector()
-        //     }
-        // }
-    }
+        return () => {
+            map.off("draw.create", onCreate)
+            map.off("draw.update", onUpdate)
+            map.off("draw.delete", onDelete)
+        }
+    }, [drawInstance, getDrawModeByType, getHexColorByValue, map, safeChangeMode, syncDrawVectorFromDraw])
 
     const handleCreateVector = async () => {
         if (!pageContext.current!.vectorData.name.trim() || !pageContext.current!.vectorData.epsg) return
@@ -195,12 +310,43 @@ export default function VectorCreation({ node, context }: VectorCreationProps) {
             epsg: pageContext.current!.vectorData.epsg,
         }
 
-        const vectorColor = vectorColorMap.find(item => item.value === newVector.color)?.color
+        console.log('Creating vector with data:', newVector)
+
+        const featureJson = drawInstance.getAll()
+        pageContext.current.drawVector = featureJson
+        pageContext.current.hasVector = featureJson.features.length > 0
+
+        console.log('featureJson', featureJson)
+
+        try {
+            await api.node.mountNode({
+                nodeInfo: node.nodeInfo,
+                templateName: 'vector',
+                mountParamsString: JSON.stringify(newVector)
+            })
+
+            await api.vector.saveVector(node.nodeInfo, null, featureJson)
+
+            node.isTemp = false
+                ; (node as ResourceNode).tree.tempNodeExist = false
+                ; (node.tree as ResourceTree).selectedNode = null
+                ; (node.tree as ResourceTree).notifyDomUpdate()
+
+            const { isEditMode } = useLayerGroupStore.getState()
+            useToolPanelStore.getState().setActiveTab(isEditMode ? 'edit' : 'check')
+
+            await (node.tree as ResourceTree).refresh()
+            toast.success('Patch Created successfully')
+        } catch (error) {
+            toast.error(`Failed to create patch: ${error}`)
+        }
+
 
         // setVectorData(newVector)
         // setVectorColor(vectorColor!)
         // pageContext.current!.hasVector = true
         // pageContext.current!.vectorData = newVector
+        // featureJson 就是你要保存/上传到后端的 GeoJSON FeatureCollection
         // const createVectorRes = await apis.vector.createVector.fetch(newVector, node.tree.isPublic)
         // if (!createVectorRes.success) {
         //     toast.error(`Failed to create vector ${newVector.name}`)
@@ -235,13 +381,43 @@ export default function VectorCreation({ node, context }: VectorCreationProps) {
     }
 
     const handleConfirmType = () => {
-        vectorData.current.type = pendingType
+        pageContext.current.vectorData.type = pendingType
         setTypeSelectDialogOpen(false)
+
+        // default to Draw tool after selecting type
+        setSelectedToolSafe("draw")
+
+        // enter draw mode for chosen type and apply current selected color
+        const mode = getDrawModeByType(pendingType)
+        const hex = getHexColorByValue(pageContext.current.vectorData.color)
+        safeChangeMode(mode)
+        applyVectorColorToDraw(hex)
         triggerRepaint()
     }
 
+    const handleClickDraw = useCallback(() => {
+        setSelectedToolSafe("draw")
+        const mode = getDrawModeByType(pageContext.current.vectorData.type)
+        safeChangeMode(mode)
+    }, [getDrawModeByType, safeChangeMode, setSelectedToolSafe])
+
+    const handleClickSelect = useCallback(() => {
+        setSelectedToolSafe("select")
+        safeChangeMode("simple_select")
+    }, [safeChangeMode, setSelectedToolSafe])
+
+    const handleDeleteSelected = useCallback(() => {
+        if (selectedToolRef.current !== "select") return
+        try {
+            ; (drawInstance as any)?.trash?.()
+        } catch (e) {
+            console.warn("Failed to delete selected features:", e)
+        }
+        syncDrawVectorFromDraw()
+    }, [drawInstance, syncDrawVectorFromDraw])
+
     return (
-        <div className="w-full h-full bg-slate-900 overflow-y-auto scrollbar-hide">
+        <div className="w-full h-full flex flex-col">
             <Dialog open={typeSelectDialogOpen} onOpenChange={setTypeSelectDialogOpen}>
                 <DialogContent
                     className="bg-white text-slate-900 border border-slate-200"
@@ -294,8 +470,8 @@ export default function VectorCreation({ node, context }: VectorCreationProps) {
             </Dialog>
 
             {typeSelectDialogOpen ? null : (
-                <div className="w-full max-w-md mx-auto">
-                    <div className="border-b border-gray-700">
+                <>
+                    <div className='flex-none w-full border-b border-gray-700 flex flex-col'>
                         <div className="w-full flex justify-center items-center gap-4 p-4">
                             <Avatar className="h-10 w-10 border-2 border-white">
                                 <AvatarFallback className="bg-[#007ACC]">
@@ -318,7 +494,7 @@ export default function VectorCreation({ node, context }: VectorCreationProps) {
                                     ))}
                                 </ul>
                             </div>
-                            <div className="text-sm w-full flex flex-row items-center justify-center space-x-2">
+                            <div className="text-sm w-full flex flex-row items-center justify-center space-x-4">
                                 <Button
                                     className="w-[1/3] bg-sky-500 hover:bg-sky-600 text-white cursor-pointer"
                                     onClick={handleReselectVectorType}
@@ -327,184 +503,190 @@ export default function VectorCreation({ node, context }: VectorCreationProps) {
                                 </Button>
                                 <Button
                                     className="w-[1/3] bg-green-500 hover:bg-green-600 text-white cursor-pointer"
-                                    disabled={!vectorData.current.name.trim() || !vectorData.current.epsg.trim()}
+                                    disabled={!pageContext.current.vectorData.name.trim() || !pageContext.current.vectorData.epsg.trim()}
                                     onClick={handleCreateVector}
                                 >
                                     Create New Vector
                                 </Button>
                             </div>
                         </div>
-
-                        <div className="w-full p-4 space-y-4 border-t border-gray-700">
-                            <div>
-                                <h3 className="text-white font-semibold mb-2">Drawing Mode</h3>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <button className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all cursor-pointer">
-                                        <Pencil className="h-4 w-4" />
-                                        <span>Draw</span>
-                                        <span className="text-xs opacity-80">[ Ctrl+D ]</span>
-                                    </button>
-                                    <button className="bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600 text-white px-4 py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all cursor-pointer">
-                                        <MousePointer className="h-4 w-4" />
-                                        <span>Select</span>
-                                        <span className="text-xs opacity-80">[ Ctrl+S ]</span>
-                                    </button>
-                                    <button className="bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600 text-white px-4 py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all cursor-pointer">
-                                        <Move className="h-4 w-4" />
-                                        <span>Move</span>
-                                        <span className="text-xs opacity-80">[ Ctrl+M ]</span>
-                                    </button>
-                                    <button className="bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600 text-white px-4 py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all cursor-pointer">
-                                        <Hand className="h-4 w-4" />
-                                        <span>Pan</span>
-                                        <span className="text-xs opacity-80">[ Ctrl+H ]</span>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div>
-                                <h3 className="text-white font-semibold mb-2">Operations</h3>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <button className="bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600 text-white px-4 py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all cursor-pointer">
-                                        <Undo2 className="h-4 w-4" />
-                                        <span>Undo</span>
-                                        <span className="text-xs opacity-80">[ Ctrl+Z ]</span>
-                                    </button>
-                                    <button className="bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600 text-white px-4 py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all cursor-pointer">
-                                        <Redo2 className="h-4 w-4" />
-                                        <span>Redo</span>
-                                        <span className="text-xs opacity-80">[ Ctrl+Y ]</span>
-                                    </button>
-                                    <button className="bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all cursor-pointer">
-                                        <Trash2 className="h-4 w-4" />
-                                        <span>Delete</span>
-                                        <span className="text-xs opacity-80">[ Del ]</span>
-                                    </button>
-                                    <button className="bg-green-500 hover:bg-green-600 text-white px-4 py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all cursor-pointer">
-                                        <Save className="h-4 w-4" />
-                                        <span>Save</span>
-                                        <span className="text-xs opacity-80">[ Ctrl+S ]</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
                     </div>
+                    <div className="flex-1 overflow-y-auto min-h-0 scrollbar-hide">
+                        <div className="border-b border-gray-700">
 
-                    <div className="p-4 space-y-4">
-                        <div className="space-y-2">
-                            <h3 className="text-white font-semibold text-lg flex items-center gap-2">
-                                <Palette className="w-5 h-5" />
-                                Vector Basic Information
-                            </h3>
-                            <p className="text-slate-400 text-sm">Configure the properties for your new vector</p>
+
+                            <div className="w-full p-4 space-y-4 border-t border-gray-700">
+                                <div>
+                                    <h3 className="text-white font-semibold mb-2">Drawing Mode</h3>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button
+                                            onClick={handleClickDraw}
+                                            className={`${selectedTool === "draw"
+                                                ? "bg-orange-500 hover:bg-orange-600"
+                                                : "bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600"}
+                                                text-white px-4 py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all cursor-pointer`}
+                                        >
+                                            <Pencil className="h-4 w-4" />
+                                            <span>Draw</span>
+                                            <span className="text-xs opacity-80">[ Ctrl+D ]</span>
+                                        </button>
+                                        <button
+                                            onClick={handleClickSelect}
+                                            className={`${selectedTool === "select"
+                                                ? "bg-orange-500 hover:bg-orange-600"
+                                                : "bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600"}
+                                                text-white px-4 py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all cursor-pointer`}
+                                        >
+                                            <MousePointer className="h-4 w-4" />
+                                            <span>Select</span>
+                                            <span className="text-xs opacity-80">[ Ctrl+S ]</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <h3 className="text-white font-semibold mb-2">Operations</h3>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <button className="bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600 text-white px-2 py-1 rounded-lg font-medium flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer">
+                                            <Undo2 className="h-4 w-4" />
+                                            <span>Undo</span>
+                                            <span className="text-xs opacity-80">[ Ctrl+Z ]</span>
+                                        </button>
+                                        <button className="bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600 text-white px-2 py-1 rounded-lg font-medium flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer">
+                                            <Redo2 className="h-4 w-4" />
+                                            <span>Redo</span>
+                                            <span className="text-xs opacity-80">[ Ctrl+Y ]</span>
+                                        </button>
+                                        <button
+                                            onClick={handleDeleteSelected}
+                                            disabled={selectedTool !== "select"}
+                                            className={`${selectedTool === "select"
+                                                ? "bg-red-500 hover:bg-red-600 cursor-pointer"
+                                                : "bg-slate-700/50 border border-slate-600 opacity-50 cursor-not-allowed"}
+                                                text-white px-2 py-1 rounded-lg font-medium flex flex-col items-center justify-center gap-0.5 transition-all`}
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                            <span>Delete</span>
+                                            <span className="text-xs opacity-80">[ Del ]</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div className="border-slate-200 border bg-white p-4 rounded-lg shadow-sm">
+
+                        <div className="p-4 space-y-4">
                             <div className="space-y-2">
+                                <h3 className="text-white font-semibold text-lg flex items-center gap-2">
+                                    <Palette className="w-5 h-5" />
+                                    Vector Basic Information
+                                </h3>
+                                <p className="text-slate-400 text-sm">Configure the properties for your new vector</p>
+                            </div>
+                            <div className="border-slate-200 border bg-white p-4 rounded-lg shadow-sm">
                                 <div className="space-y-2">
-                                    <Label htmlFor="vectorName" className="text-sm font-medium text-slate-900">
-                                        Vector Name
-                                        <span className="text-red-500 ml-1">*</span>
-                                    </Label>
-                                    <Input
-                                        id="vectorName"
-                                        value={vectorData.current.name}
-                                        onChange={(e) => {
-                                            vectorData.current.name = e.target.value
-                                            triggerRepaint()
-                                        }}
-                                        placeholder="Enter vector name"
-                                        className="w-full bg-white border-slate-300 text-slate-900 placeholder:text-slate-400"
-                                    />
-                                </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="vectorName" className="text-sm font-medium text-slate-900">
+                                            Vector Name
+                                            <span className="text-red-500 ml-1">*</span>
+                                        </Label>
+                                        <Input
+                                            id="vectorName"
+                                            value={pageContext.current.vectorData.name}
+                                            readOnly={true}
+                                            className="w-full bg-white border-slate-300 text-slate-900 placeholder:text-slate-400"
+                                        />
+                                    </div>
 
-                                <div className="space-y-2">
-                                    <Label htmlFor="vectorEpsg" className="text-sm font-medium text-slate-900 flex items-center gap-2">
-                                        <Globe className="w-4 h-4" />
-                                        EPSG Code
-                                        <span className="text-red-500 ml-1">*</span>
-                                    </Label>
-                                    <Input
-                                        id="vectorEpsg"
-                                        value={vectorData.current.epsg}
-                                        onChange={(e) => {
-                                            vectorData.current.epsg = e.target.value
-                                            triggerRepaint()
-                                        }}
-                                        placeholder="e.g., EPSG:4326"
-                                        className="w-full bg-white border-slate-300 text-slate-900 placeholder:text-slate-400"
-                                    />
-                                </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="vectorEpsg" className="text-sm font-medium text-slate-900 flex items-center gap-2">
+                                            <Globe className="w-4 h-4" />
+                                            EPSG Code
+                                            <span className="text-red-500 ml-1">*</span>
+                                        </Label>
+                                        <Input
+                                            id="vectorEpsg"
+                                            value={pageContext.current.vectorData.epsg}
+                                            onChange={(e) => {
+                                                pageContext.current.vectorData.epsg = e.target.value
+                                                triggerRepaint()
+                                            }}
+                                            placeholder="e.g., EPSG:4326"
+                                            className="w-full bg-white border-slate-300 text-slate-900 placeholder:text-slate-400"
+                                        />
+                                    </div>
 
-                                <div className="space-y-2">
-                                    <Label htmlFor="vectorColor" className="text-sm font-medium text-slate-900">
-                                        Vector Color
-                                    </Label>
-                                    <Select
-                                        value={vectorData.current.color}
-                                        onValueChange={(value: any) => {
-                                            vectorData.current.color = value
-                                            triggerRepaint()
-                                        }}
-                                    >
-                                        <SelectTrigger className="w-full cursor-pointer bg-white border-slate-300 text-slate-900">
-                                            <SelectValue placeholder="Select color" />
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-white border-slate-200">
-                                            {vectorColorMap.map((item) => (
-                                                <SelectItem
-                                                    key={item.value}
-                                                    value={item.value}
-                                                    className="cursor-pointer text-slate-900 hover:bg-slate-100"
-                                                >
-                                                    <div className="flex items-center gap-2">
-                                                        <div
-                                                            className="w-4 h-4 rounded-full border border-slate-300"
-                                                            style={{ backgroundColor: item.color }}
-                                                        />
-                                                        <span>{item.name}</span>
-                                                    </div>
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="vectorColor" className="text-sm font-medium text-slate-900">
+                                            Vector Color
+                                        </Label>
+                                        <Select
+                                            value={pageContext.current.vectorData.color}
+                                            onValueChange={(value: any) => {
+                                                pageContext.current.vectorData.color = value
+                                                applyVectorColorToDraw(getHexColorByValue(value))
+                                                triggerRepaint()
+                                            }}
+                                        >
+                                            <SelectTrigger className="w-full cursor-pointer bg-white border-slate-300 text-slate-900">
+                                                <SelectValue placeholder="Select color" />
+                                            </SelectTrigger>
+                                            <SelectContent className="bg-white border-slate-200">
+                                                {vectorColorMap.map((item) => (
+                                                    <SelectItem
+                                                        key={item.value}
+                                                        value={item.value}
+                                                        className="cursor-pointer text-slate-900 hover:bg-slate-100"
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <div
+                                                                className="w-4 h-4 rounded-full border border-slate-300"
+                                                                style={{ backgroundColor: item.color }}
+                                                            />
+                                                            <span>{item.name}</span>
+                                                        </div>
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
 
-                                <div className="space-y-2 pt-4">
-                                    <Label className="text-sm font-medium text-slate-900">Preview</Label>
-                                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm text-slate-500">Type</span>
-                                            <div className="flex items-center gap-2">
-                                                {getVectorTypeIcon(vectorData.current.type)}
-                                                <Badge variant="secondary" className="text-xs font-semibold">
-                                                    {vectorData.current.type}
-                                                </Badge>
+                                    <div className="space-y-2 pt-4">
+                                        <Label className="text-sm font-medium text-slate-900">Preview</Label>
+                                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-slate-500">Type</span>
+                                                <div className="flex items-center gap-2">
+                                                    {getVectorTypeIcon(pageContext.current.vectorData.type)}
+                                                    <Badge variant="secondary" className="text-xs font-semibold">
+                                                        {pageContext.current.vectorData.type}
+                                                    </Badge>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm text-slate-500">Name</span>
-                                            <span className="text-slate-900 font-medium">{vectorData.current.name || "Not set"}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm text-slate-500">EPSG</span>
-                                            <span className="text-slate-900 font-medium">{vectorData.current.epsg || "Not set"}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm text-slate-500">Color</span>
-                                            <div
-                                                className="w-20 h-6 rounded-full border-2 border-slate-300 shadow-sm"
-                                                style={{
-                                                    backgroundColor: vectorColorMap.find((item) => item.value === vectorData.current.color)
-                                                        ?.color,
-                                                }}
-                                            />
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-slate-500">Name</span>
+                                                <span className="text-slate-900 font-medium">{pageContext.current.vectorData.name || "Not set"}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-slate-500">EPSG</span>
+                                                <span className="text-slate-900 font-medium">{pageContext.current.vectorData.epsg || "Not set"}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-slate-500">Color</span>
+                                                <div
+                                                    className="w-20 h-6 rounded-full border-2 border-slate-300 shadow-sm"
+                                                    style={{
+                                                        backgroundColor: vectorColorMap.find((item) => item.value === pageContext.current.vectorData.color)
+                                                            ?.color,
+                                                    }}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
+                </>
             )}
         </div>
     )
