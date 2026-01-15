@@ -1,13 +1,11 @@
 import {
     BaseResponse,
     GetNodeMetaInfoParams,
-    // LinkNodeParams,
     LinkNodeResponse,
     MountNodeParams,
     NodeMeta,
     PushPullNodeParams,
     PullResponse,
-    // UnlinkNodeParams
 } from './types'
 // import { useSettingStore } from '@/store/storeSet'
 import { decodeNodeInfo } from './utils'
