@@ -8,28 +8,21 @@ import {
     AlertDialogHeader,
     AlertDialogContent,
     AlertDialogDescription,
-} from "@/components/ui/alert-dialog"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Fullscreen, GripVertical, MapPin, RotateCcw, SquareDivide as SquaresUnite, Upload, X } from "lucide-react"
-import { cn } from "@/utils/utils"
-import type { MapViewContext } from "@/views/mapView/mapView"
-import type { IResourceNode } from "../scene/iscene"
-import type { IViewContext } from "@/views/IViewContext"
-import { toast } from "sonner"
-import * as api from "../api/apis"
-import type { ResourceNode, ResourceTree } from "../scene/scene"
+} from '@/components/ui/alert-dialog'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Fullscreen, GripVertical, MapPin, RotateCcw, SquaresUnite, Upload, X } from 'lucide-react'
+import { cn } from '@/utils/utils'
+import { MapViewContext } from '@/views/mapView/mapView'
+import { IResourceNode } from '../scene/iscene'
+import { IViewContext } from '@/views/IViewContext'
+import { toast } from 'sonner'
+import * as api from '../api/apis'
+import { ResourceNode, ResourceTree } from '../scene/scene'
 import { Checkbox } from "@/components/ui/checkbox"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuRadioGroup,
-    DropdownMenuRadioItem,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { VectorDataResponse } from "../api/types"
 
 interface GridCreationProps {
     node: IResourceNode
