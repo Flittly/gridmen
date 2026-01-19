@@ -21,7 +21,7 @@ interface PatchCreationProps {
     context: IViewContext
 }
 
-interface Schema extends SchemaData {
+export interface Schema extends SchemaData {
     schemaNodeKey: string
 }
 
@@ -387,7 +387,6 @@ export default function PatchCreation({
         clearMarkerByNodeKey(tempSchemaKeyRef.current!)
         tempSchemaKeyRef.current = null
         pageContext.current.schema = null
-        console.log('Deleted dragged schema', pageContext.current.schema)
 
         triggerRepaint()
     }
