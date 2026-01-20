@@ -211,11 +211,6 @@ export default function GridCreation({ node, context }: GridCreationProps) {
         const featureJson = vectorInfo?.feature_json
         if (!featureJson || featureJson?.type !== "FeatureCollection") return
 
-        const epsg = String(vectorInfo?.epsg ?? "4326")
-        if (epsg && epsg !== "4326") {
-            toast.warning(`Vector EPSG=${epsg} is not supported for preview (expected 4326)`)
-        }
-
         const safeId = toSafeMapId(vectorKey)
         const sourceId = `grid-vector-src-${safeId}`
         const fillLayerId = `grid-vector-fill-${safeId}`
@@ -986,7 +981,6 @@ export default function GridCreation({ node, context }: GridCreationProps) {
                     {/* ----------- */}
                     {/* Patch Drop Zone */}
                     {/* ----------- */}
-                    {/* TODO:用map来维护 */}
                     <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
                         <h2 className="text-lg text-black font-semibold mb-2">Patch Drop Zone</h2>
                         <div>
