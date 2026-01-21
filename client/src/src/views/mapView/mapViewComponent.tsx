@@ -9,17 +9,15 @@ import DrawRectangle from 'mapbox-gl-draw-rectangle-mode'
 import ToolPanel from './toolPanel'
 import LayerGroup from './layerGroup'
 import 'mapbox-gl/dist/mapbox-gl.css'
+import store from '@/store/store'
+import { useSettingStore } from '@/store/storeSet'
 import MapView, { MapViewContext } from './mapView'
 import { VIEW_REGISTRY } from '@/registry/viewRegistry'
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
-import { calculateRectangleCoordinates, debounce } from '@/utils/utils'
 import { IResourceNode } from '@/template/scene/iscene'
 import CustomLayerGroup from './topology/customLayerGroup'
-import store from '@/store/store'
+import { calculateRectangleCoordinates, debounce } from '@/utils/utils'
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 
-// TODO；将初试中心设置移入zustand放在setting中
-const initialLongitude = 114.051537
-const initialLatitude = 22.446937
 const initialZoom = 11
 const maxZoom = 22
 
@@ -54,7 +52,18 @@ const MapContainer = forwardRef<HTMLDivElement, MapContainerProps>(({ onMapLoad,
     const initializedRef = useRef(false)
     const mapWrapperRef = useRef<HTMLDivElement>(null)
 
+    const mapInitialLongitude = useSettingStore((s) => s.mapInitialLongitude)
+    const mapInitialLatitude = useSettingStore((s) => s.mapInitialLatitude)
+
     const { setMap, setDrawInstance } = useMapStore()
+    const mapFromStore = useMapStore((s) => s.map)
+
+    // Keep existing map centered on the configured initial center.
+    // This also makes settings changes immediately reflect on the map.
+    useEffect(() => {
+        if (!mapFromStore) return
+        mapFromStore.easeTo({ center: [mapInitialLongitude, mapInitialLatitude], duration: 300 })
+    }, [mapFromStore, mapInitialLongitude, mapInitialLatitude])
 
     const handleDrawCreate = useCallback((e: any) => {
         if (isProcessingDrawEventRef.current) return
@@ -79,29 +88,6 @@ const MapContainer = forwardRef<HTMLDivElement, MapContainerProps>(({ onMapLoad,
             isProcessingDrawEventRef.current = false
         }
     }, [])
-
-    // const handleDrawCreate = (e: any) => {
-    //     if (isProcessingDrawEvent) return
-
-    //     isProcessingDrawEvent = true
-    //     try {
-    //         if (e.features && e.features.length > 0) {
-    //             const feature = e.features[0];
-    //             if (drawInstance && drawInstance.getMode() === 'draw_rectangle' && feature.geometry.type === 'Polygon') {
-    //                 const coordinates = calculateRectangleCoordinates(feature)
-    //                 const drawCompleteEvent = new CustomEvent('rectangle-draw-complete', {
-    //                     detail: { coordinates }
-    //                 })
-    //                 document.dispatchEvent(drawCompleteEvent)
-    //                 if (drawInstance) {
-    //                     drawInstance.changeMode('simple_select')
-    //                 }
-    //             }
-    //         }
-    //     } finally {
-    //         isProcessingDrawEvent = false
-    //     }
-    // }
 
     useEffect(() => {
         mapboxgl.accessToken = import.meta.env.VITE_MAP_TOKEN
@@ -130,11 +116,12 @@ const MapContainer = forwardRef<HTMLDivElement, MapContainerProps>(({ onMapLoad,
                 mapCanvasDebounce(currentMap, 100, currentMapWrapper)
 
             } else {
+                const { mapInitialLongitude: lng, mapInitialLatitude: lat } = useSettingStore.getState()
                 const mapInstance = new mapboxgl.Map({
                     container: currentMapWrapper,
                     style: 'mapbox://styles/mapbox/streets-v12',
                     projection: 'globe',
-                    center: [initialLongitude, initialLatitude],
+                    center: [lng, lat],
                     zoom: initialZoom,
                     maxZoom: maxZoom,
                     pitch: 0,
